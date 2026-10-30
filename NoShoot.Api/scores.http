@@ -1,0 +1,17 @@
+﻿@baseUrl = http://localhost:5031
+
+POST {{baseUrl}}/api/scores
+Content-Type: application/json
+
+{ "playerName": "Andre", "kills": 62, "survivedSeconds": 50 }
+
+###
+
+POST {{baseUrl}}/api/scores
+Content-Type: application/json
+
+{ "playerName": "Teste", "kills": 10, "survivedSeconds": 200 }
+
+###
+
+GET {{baseUrl}}/api/scores/top
