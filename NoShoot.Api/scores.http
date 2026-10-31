@@ -23,3 +23,35 @@ GET {{baseUrl}}/api/scores/1
 ###
 
 GET {{baseUrl}}/api/scores/999
+
+###
+
+# Nome vazio
+POST {{baseUrl}}/api/scores
+Content-Type: application/json
+
+{ "playerName": "   ", "kills": 10, "survivedSeconds": 60 }
+
+###
+
+# Valores negativos e tempo impossivel
+POST {{baseUrl}}/api/scores
+Content-Type: application/json
+
+{ "playerName": "Andre", "kills": -5, "survivedSeconds": 9999 }
+
+###
+
+# Trapaca: kills demais para o tempo
+POST {{baseUrl}}/api/scores
+Content-Type: application/json
+
+{ "playerName": "Hacker", "kills": 1000000, "survivedSeconds": 1 }
+
+###
+
+# Nome com acento (deve ser aceito)
+POST {{baseUrl}}/api/scores
+Content-Type: application/json
+
+{ "playerName": "André", "kills": 62, "survivedSeconds": 50 }

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using NoShoot.Api.Data;
 using NoShoot.Api.Models;
+using NoShoot.Api.Validation;
+using NoShoot.Api.Scoring;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,19 +18,20 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 
-const int PointsPerKill = 10;
-const int PointsPerSecond = 1;
-
 app.MapGet("/", () => "NoShoot Leaderboard API");
 
 app.MapPost("/api/scores", async (SubmitScoreRequest request, LeaderboardDbContext db) =>
 {
+    var errors = ScoreValidator.Validate(request);
+    if (errors.Count > 0)
+        return Results.ValidationProblem(errors);
+
     var entry = new ScoreEntry
     {
-        PlayerName = request.PlayerName,
+        PlayerName = request.PlayerName.Trim(),
         Kills = request.Kills,
         SurvivedSeconds = request.SurvivedSeconds,
-        Score = request.Kills * PointsPerKill + request.SurvivedSeconds * PointsPerSecond,
+        Score = ScoreCalculator.Calculate(request.Kills, request.SurvivedSeconds),
         CreatedAt = DateTime.UtcNow
     };
 
@@ -44,11 +47,13 @@ app.MapGet("/api/scores/{id:int}", async (int id, LeaderboardDbContext db) =>
         : Results.NotFound());
 
 app.MapGet("/api/scores/top", async (LeaderboardDbContext db, int limit = 10) =>
-    await db.Scores
+{
+    limit = Math.Clamp(limit, 1, 100);
+
+    return await db.Scores
         .OrderByDescending(s => s.Score)
         .Take(limit)
-        .ToListAsync());
+        .ToListAsync();
+});
 
 app.Run();
-
-record SubmitScoreRequest(string PlayerName, int Kills, int SurvivedSeconds);
