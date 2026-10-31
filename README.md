@@ -134,4 +134,4 @@ NoShoot.Leaderboard.slnx          # Solution with both projects
 
 ## Author
 
-[André Noro Crivellenti](https://github.com/andrenc1)
+[André Noro](https://github.com/andrenc1)
