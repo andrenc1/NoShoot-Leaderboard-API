@@ -12,14 +12,38 @@ The game does **not** send a score. It sends the raw results of the run (kills a
 score = kills × 10 + seconds survived × 1
 ```
 
-This way, a modified client can't simply send `"score": 999999`. Server-side validation of impossible results is on the roadmap.
+This way, a modified client can't simply send `"score": 999999`.
+
+## Validation
+
+Every submitted run is validated before it is saved. Invalid requests get `400 Bad Request` with all the errors at once, in the standard Problem Details format.
+
+| Field | Rule |
+|---|---|
+| `playerName` | 4 to 20 characters; only letters `A-Z`, numbers and `_` (no accents or spaces). Leading and trailing spaces are trimmed |
+| `kills` | Can't be negative |
+| `survivedSeconds` | Between 0 and 600 (a match lasts at most 10 minutes) |
+| Kills per second | At most 5 kills per second survived, to reject impossible runs |
+
+Example of a rejected request:
+
+```json
+{
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": {
+    "kills": ["Kills can't be negative."],
+    "survivedSeconds": ["Survived seconds must be between 0 and 600."]
+  }
+}
+```
 
 ## Endpoints
 
 | Method | Route | Description | Responses |
 |---|---|---|---|
-| `POST` | `/api/scores` | Submit the result of a run | `201 Created` |
-| `GET` | `/api/scores/top?limit=10` | Top scores, highest first (`limit` defaults to 10) | `200 OK` |
+| `POST` | `/api/scores` | Submit the result of a run | `201 Created`, `400 Bad Request` |
+| `GET` | `/api/scores/top?limit=10` | Top scores, highest first (`limit` defaults to 10, max 100) | `200 OK` |
 | `GET` | `/api/scores/{id}` | A single score by id | `200 OK`, `404 Not Found` |
 
 ### Example
@@ -51,6 +75,7 @@ Response (`201 Created`):
 - **C#** with **.NET 10** and **ASP.NET Core** Minimal APIs
 - **Entity Framework Core** with **SQLite**
 - Migrations applied automatically on startup
+- **xUnit** for automated tests
 
 ## How to run
 
@@ -64,27 +89,45 @@ dotnet run --project NoShoot.Api
 
 The API starts at `http://localhost:5031`. The SQLite database (`leaderboard.db`) is created automatically in the `NoShoot.Api` folder on the first run.
 
-To try the endpoints, open `NoShoot.Api/scores.http` in Visual Studio or VS Code (with the REST Client extension) and send the requests.
+To try the endpoints, open `NoShoot.Api/scores.http` in Visual Studio or VS Code (with the REST Client extension) and send the requests. It includes valid requests and examples that should be rejected.
+
+## Tests
+
+```bash
+dotnet test
+```
+
+The tests cover the score formula and every validation rule, including the boundary values (for example, 4 and 20 characters are accepted while 3 and 21 are rejected).
 
 ## Project structure
 
 ```
-NoShoot.Api/
-├── Program.cs          # Configuration and endpoints
-├── Models/
-│   └── ScoreEntry.cs   # Score entity (a row in the Scores table)
-├── Data/
-│   └── LeaderboardDbContext.cs
-├── Migrations/         # Database schema history (EF Core)
-└── scores.http         # Requests for manual testing
+NoShoot.Leaderboard.slnx          # Solution with both projects
+├── NoShoot.Api/                  # The API
+│   ├── Program.cs                # Configuration and endpoints
+│   ├── Models/
+│   │   ├── ScoreEntry.cs         # Score entity (a row in the Scores table)
+│   │   └── SubmitScoreRequest.cs # What the game sends
+│   ├── Data/
+│   │   └── LeaderboardDbContext.cs
+│   ├── Scoring/
+│   │   └── ScoreCalculator.cs    # Score formula
+│   ├── Validation/
+│   │   └── ScoreValidation.cs    # Validation rules
+│   ├── Migrations/               # Database schema history (EF Core)
+│   └── scores.http               # Requests for manual testing
+└── NoShoot.Api.Tests/            # xUnit tests
+    ├── ScoreCalculatorTests.cs
+    └── ScoreValidationTests.cs
 ```
 
 ## Roadmap
 
 - [x] Submit scores and get the leaderboard
 - [x] Persistent storage with EF Core and SQLite
-- [ ] Input validation and anti-cheat checks (reject impossible kills per second)
-- [ ] Automated tests with xUnit
+- [x] Input validation and anti-cheat checks (reject impossible kills per second)
+- [x] Automated tests with xUnit
+- [ ] Player registration with unique names and a per-player token
 - [ ] Integration with the Unity game (`UnityWebRequest`)
 - [ ] PostgreSQL with Docker Compose
 - [ ] Deploy to a cloud host
