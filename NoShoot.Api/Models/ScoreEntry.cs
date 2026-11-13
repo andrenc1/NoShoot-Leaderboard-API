@@ -3,7 +3,8 @@
 public class ScoreEntry
 {
     public int Id { get; set; }
-    public string PlayerName { get; set; } = "";
+    public int PlayerId { get; set; }
+    public Player Player { get; set; } = null!;
     public int Kills { get; set; }
     public int SurvivedSeconds { get; set; }
     public int Score { get; set; }

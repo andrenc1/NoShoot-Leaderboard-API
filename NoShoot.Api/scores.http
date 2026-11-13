@@ -1,57 +1,67 @@
 ﻿@baseUrl = http://localhost:5031
+@token = COLE_AQUI_O_TOKEN_DO_ANDRENC1
+@token2 = COLE_AQUI_O_TOKEN_DA_MARIA
 
+### 1. Cadastrar andrenc1 (201)
+POST {{baseUrl}}/api/players
+Content-Type: application/json
+
+{ "name": "andrenc1" }
+
+### 2. Mesmo nome com outras maiusculas (409)
+POST {{baseUrl}}/api/players
+Content-Type: application/json
+
+{ "name": "ANDRENC1" }
+
+### 3. Nome invalido (400)
+POST {{baseUrl}}/api/players
+Content-Type: application/json
+
+{ "name": "ab" }
+
+### 4. Cadastrar maria (201)
+POST {{baseUrl}}/api/players
+Content-Type: application/json
+
+{ "name": "maria" }
+
+### 5. Partida do andrenc1 (201)
+POST {{baseUrl}}/api/scores
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "kills": 62, "survivedSeconds": 50 }
+
+### 6. Outra partida do andrenc1, melhor (201)
+POST {{baseUrl}}/api/scores
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "kills": 80, "survivedSeconds": 100 }
+
+### 7. Partida da maria (201)
+POST {{baseUrl}}/api/scores
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{ "kills": 70, "survivedSeconds": 150 }
+
+### 8. Sem token (401)
 POST {{baseUrl}}/api/scores
 Content-Type: application/json
 
-{ "playerName": "Andre", "kills": 62, "survivedSeconds": 50 }
+{ "kills": 10, "survivedSeconds": 60 }
 
-###
-
+### 9. Token falso (401)
 POST {{baseUrl}}/api/scores
+Authorization: Bearer tokenfalso123
 Content-Type: application/json
 
-{ "playerName": "Teste", "kills": 10, "survivedSeconds": 200 }
+{ "kills": 10, "survivedSeconds": 60 }
 
-###
-
+### 10. Ranking
 GET {{baseUrl}}/api/scores/top
 
-###
-
+### 11. Uma partida pelo id
 GET {{baseUrl}}/api/scores/1
-
-###
-
-GET {{baseUrl}}/api/scores/999
-
-###
-
-# Nome vazio
-POST {{baseUrl}}/api/scores
-Content-Type: application/json
-
-{ "playerName": "   ", "kills": 10, "survivedSeconds": 60 }
-
-###
-
-# Valores negativos e tempo impossivel
-POST {{baseUrl}}/api/scores
-Content-Type: application/json
-
-{ "playerName": "Andre", "kills": -5, "survivedSeconds": 9999 }
-
-###
-
-# Trapaca: kills demais para o tempo
-POST {{baseUrl}}/api/scores
-Content-Type: application/json
-
-{ "playerName": "Hacker", "kills": 1000000, "survivedSeconds": 1 }
-
-###
-
-# Nome com acento (deve ser aceito)
-POST {{baseUrl}}/api/scores
-Content-Type: application/json
-
-{ "playerName": "André", "kills": 62, "survivedSeconds": 50 }
