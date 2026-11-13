@@ -1,31 +1,112 @@
 # NoShoot Leaderboard API
 
-REST API that stores scores and serves the online leaderboard for [NoShoot](https://github.com/andrenc1/NoShoot), a 2D survivor-like game made in Unity.
+REST API that registers players, stores scores and serves the online leaderboard for [NoShoot](https://github.com/andrenc1/NoShoot), a 2D survivor-like game made in Unity.
 
-The game sends the result of each run, and the API calculates the score, saves it and returns the top players.
+## How it works
 
-## How the score works
+```
+1. Register once
+   POST /api/players  { "name": "andrenc1" }
+   → 201 { "playerId": 1, "name": "andrenc1", "token": "9F3A...C21B" }
+     The token is returned only once. The game stores it locally.
 
-The game does **not** send a score. It sends the raw results of the run (kills and seconds survived), and the API calculates the score on the server:
+2. Submit each run
+   POST /api/scores
+   Authorization: Bearer 9F3A...C21B
+   { "kills": 62, "survivedSeconds": 50 }
+   → 201  The API finds the player by the token and calculates the score.
+
+3. Show the leaderboard
+   GET /api/scores/top
+   → 200 [ { "playerName": "andrenc1", "bestScore": 900 }, ... ]
+```
+
+## Design decisions
+
+**The server calculates the score.** The game sends only the raw results of the run (kills and seconds survived). The API applies the formula, so a modified client can't simply send `"score": 999999`:
 
 ```
 score = kills × 10 + seconds survived × 1
 ```
 
-This way, a modified client can't simply send `"score": 999999`.
+**Players are identified by a token, not by a name.** Each player gets a random 256-bit token at registration and sends it in the `Authorization: Bearer` header. Nobody can submit a score under someone else's name without their token.
+
+**Tokens are never stored in plain text.** The database keeps only a SHA-256 hash of each token. A leaked database doesn't expose usable tokens. SHA-256 is enough here because the tokens are long and fully random (unlike passwords chosen by people, which need a slow hash such as bcrypt).
+
+**Unique names are enforced by the database.** Names are compared case-insensitively (`andrenc1` and `ANDRENC1` are the same name) through a normalized column with a unique index. The endpoint also checks before saving, and a database conflict caused by two simultaneous registrations is still returned as `409 Conflict`.
+
+**Entities and responses are separate.** Endpoints return DTOs (`ScoreResponse`, `LeaderboardEntry`...) instead of database entities, so internal fields such as the token hash are never serialized.
+
+**One entry per player in the leaderboard.** The leaderboard shows each player's best score, so a single player can't fill the top 10.
+
+## Endpoints
+
+| Method | Route | Auth | Description | Responses |
+|---|---|---|---|---|
+| `POST` | `/api/players` | — | Register a player and get a token | `201`, `400`, `409` |
+| `POST` | `/api/scores` | Bearer token | Submit the result of a run | `201`, `400`, `401` |
+| `GET` | `/api/scores/top?limit=10` | — | Best score of each player, highest first (`limit` 1–100, default 10) | `200` |
+| `GET` | `/api/scores/{id}` | — | A single run by id | `200`, `404` |
+
+### Examples
+
+Register a player:
+
+```http
+POST /api/players
+Content-Type: application/json
+
+{ "name": "andrenc1" }
+```
+
+```json
+{ "playerId": 1, "name": "andrenc1", "token": "9F3A0B...C21B" }
+```
+
+Submit a run:
+
+```http
+POST /api/scores
+Authorization: Bearer 9F3A0B...C21B
+Content-Type: application/json
+
+{ "kills": 62, "survivedSeconds": 50 }
+```
+
+```json
+{
+  "id": 1,
+  "playerName": "andrenc1",
+  "kills": 62,
+  "survivedSeconds": 50,
+  "score": 670,
+  "createdAt": "2026-11-13T17:50:12.4471234Z"
+}
+```
+
+Leaderboard:
+
+```http
+GET /api/scores/top
+```
+
+```json
+[
+  { "playerName": "andrenc1", "bestScore": 900 },
+  { "playerName": "maria", "bestScore": 850 }
+]
+```
 
 ## Validation
 
-Every submitted run is validated before it is saved. Invalid requests get `400 Bad Request` with all the errors at once, in the standard Problem Details format.
+Invalid requests get `400 Bad Request` with all the errors at once, in the standard Problem Details format.
 
 | Field | Rule |
 |---|---|
-| `playerName` | 4 to 20 characters; only letters `A-Z`, numbers and `_` (no accents or spaces). Leading and trailing spaces are trimmed |
+| `name` (registration) | 4 to 20 characters; only letters `A-Z`, numbers and `_` (no accents or spaces). Leading and trailing spaces are trimmed |
 | `kills` | Can't be negative |
 | `survivedSeconds` | Between 0 and 600 (a match lasts at most 10 minutes) |
 | Kills per second | At most 5 kills per second survived, to reject impossible runs |
-
-Example of a rejected request:
 
 ```json
 {
@@ -38,42 +119,12 @@ Example of a rejected request:
 }
 ```
 
-## Endpoints
-
-| Method | Route | Description | Responses |
-|---|---|---|---|
-| `POST` | `/api/scores` | Submit the result of a run | `201 Created`, `400 Bad Request` |
-| `GET` | `/api/scores/top?limit=10` | Top scores, highest first (`limit` defaults to 10, max 100) | `200 OK` |
-| `GET` | `/api/scores/{id}` | A single score by id | `200 OK`, `404 Not Found` |
-
-### Example
-
-Request:
-
-```http
-POST /api/scores
-Content-Type: application/json
-
-{ "playerName": "Andre", "kills": 62, "survivedSeconds": 50 }
-```
-
-Response (`201 Created`):
-
-```json
-{
-  "id": 1,
-  "playerName": "Andre",
-  "kills": 62,
-  "survivedSeconds": 50,
-  "score": 670,
-  "createdAt": "2026-10-30T18:08:33.9569987Z"
-}
-```
+Requests to `POST /api/scores` without a token, or with a token that doesn't belong to any player, get `401 Unauthorized`.
 
 ## Tech
 
 - **C#** with **.NET 10** and **ASP.NET Core** Minimal APIs
-- **Entity Framework Core** with **SQLite**
+- **Entity Framework Core** with **SQLite** (one-to-many relationship between players and scores, unique indexes)
 - Migrations applied automatically on startup
 - **xUnit** for automated tests
 
@@ -89,7 +140,7 @@ dotnet run --project NoShoot.Api
 
 The API starts at `http://localhost:5031`. The SQLite database (`leaderboard.db`) is created automatically in the `NoShoot.Api` folder on the first run.
 
-To try the endpoints, open `NoShoot.Api/scores.http` in Visual Studio or VS Code (with the REST Client extension) and send the requests. It includes valid requests and examples that should be rejected.
+To try the endpoints, open `NoShoot.Api/scores.http` in Visual Studio or VS Code (with the REST Client extension). Send the registration request first, then paste the returned token into the `@token` variable at the top of the file.
 
 ## Tests
 
@@ -97,28 +148,39 @@ To try the endpoints, open `NoShoot.Api/scores.http` in Visual Studio or VS Code
 dotnet test
 ```
 
-The tests cover the score formula and every validation rule, including the boundary values (for example, 4 and 20 characters are accepted while 3 and 21 are rejected).
+42 tests cover:
+
+- the score formula;
+- every validation rule, including boundary values (4 and 20 characters are accepted, 3 and 21 are rejected; 50 kills in 10 s is accepted, 51 is rejected);
+- name normalization (`andrenc1`, `AndreNC1` and `  andrenc1  ` are the same name);
+- token generation and hashing (length, format, randomness, consistency);
+- reading the `Authorization: Bearer` header, including missing, empty and malformed headers.
 
 ## Project structure
 
 ```
-NoShoot.Leaderboard.slnx          # Solution with both projects
-├── NoShoot.Api/                  # The API
-│   ├── Program.cs                # Configuration and endpoints
-│   ├── Models/
-│   │   ├── ScoreEntry.cs         # Score entity (a row in the Scores table)
-│   │   └── SubmitScoreRequest.cs # What the game sends
+NoShoot.Leaderboard.slnx             # Solution with both projects
+├── NoShoot.Api/                     # The API
+│   ├── Program.cs                   # Configuration and endpoints
+│   ├── Models/                      # Database entities
+│   │   ├── Player.cs
+│   │   └── ScoreEntry.cs
+│   ├── Contracts/                   # Request and response DTOs
+│   │   ├── PlayerContracts.cs
+│   │   └── ScoreContracts.cs
 │   ├── Data/
-│   │   └── LeaderboardDbContext.cs
+│   │   └── LeaderboardDbContext.cs  # Tables, relationship and unique indexes
 │   ├── Scoring/
-│   │   └── ScoreCalculator.cs    # Score formula
+│   │   └── ScoreCalculator.cs       # Score formula
+│   ├── Security/
+│   │   ├── PlayerToken.cs           # Token generation and hashing
+│   │   └── BearerToken.cs           # Reads the Authorization header
 │   ├── Validation/
-│   │   └── ScoreValidation.cs    # Validation rules
-│   ├── Migrations/               # Database schema history (EF Core)
-│   └── scores.http               # Requests for manual testing
-└── NoShoot.Api.Tests/            # xUnit tests
-    ├── ScoreCalculatorTests.cs
-    └── ScoreValidationTests.cs
+│   │   ├── PlayerNameValidator.cs   # Name rules and normalization
+│   │   └── ScoreValidation.cs       # Run rules (kills, time, kills per second)
+│   ├── Migrations/                  # Database schema history (EF Core)
+│   └── scores.http                  # Requests for manual testing
+└── NoShoot.Api.Tests/               # xUnit tests
 ```
 
 ## Roadmap
@@ -127,7 +189,8 @@ NoShoot.Leaderboard.slnx          # Solution with both projects
 - [x] Persistent storage with EF Core and SQLite
 - [x] Input validation and anti-cheat checks (reject impossible kills per second)
 - [x] Automated tests with xUnit
-- [ ] Player registration with unique names and a per-player token
+- [x] Player registration with unique names and a per-player token
+- [x] Leaderboard with each player's best score
 - [ ] Integration with the Unity game (`UnityWebRequest`)
 - [ ] PostgreSQL with Docker Compose
 - [ ] Deploy to a cloud host
